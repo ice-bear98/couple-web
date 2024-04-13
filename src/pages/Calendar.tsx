@@ -3,21 +3,45 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import CalendarModal from "../component/CalendarModal";
-
+import { realtimeDb } from "../firebase/FirebaseConfig";
+import { onValue, push, ref, remove, set } from "firebase/database";
 import tippy from "tippy.js";
 import "tippy.js/dist/tippy.css";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+interface ICalendar {
+    id: string;
+    title: string;
+    start: string;
+    end?: string;
+    description?: string;
+}
 
 export default function Calendar() {
     const [isActive, setIsActive] = useState(false);
-    const [events, setEvents] = useState([
-        {
-            id: "",
-            title: "",
-            start: "",
-        },
-    ]);
+    const [events, setEvents] = useState<ICalendar[]>([]);
+
+    useEffect(() => {
+        const eventsRef = ref(realtimeDb, "calendar/events");
+        onValue(
+            eventsRef,
+            (snapshot) => {
+                const data = snapshot.val();
+                const loadedEvents = [];
+                for (const key in data) {
+                    loadedEvents.push({
+                        id: key,
+                        ...data[key],
+                    });
+                }
+                setEvents(loadedEvents);
+            },
+            (error) => {
+                console.error("Firebase read failed: ", error);
+            }
+        );
+    }, []);
 
     const handleAddEvent = (
         title: string,
@@ -25,29 +49,45 @@ export default function Calendar() {
         startTime: string,
         endTime: string
     ) => {
+        const newEventRef = push(ref(realtimeDb, "calendar/events"));
         const newEvent = {
-            id: Date.now().toString(),
             title,
             start: startTime,
             end: endTime,
             description,
         };
-        setEvents((prevEvents) => [...prevEvents, newEvent]);
+        set(newEventRef, newEvent).then(() => {
+            const safeId = newEventRef.key || Date.now().toString();
+            setEvents((prevEvents) => [
+                ...prevEvents,
+                { ...newEvent, id: safeId },
+            ]);
+        });
         setIsActive(false);
     };
 
     const handleDeleteEvent = (eventId: string) => {
-        setEvents((prevEvents) =>
-            prevEvents.filter((event) => event.id !== eventId)
-        );
+        const eventRef = ref(realtimeDb, `calendar/events/${eventId}`);
+        remove(eventRef).then(() => {
+            setEvents((prevEvents) =>
+                prevEvents.filter((event) => event.id !== eventId)
+            );
+        });
     };
 
     const eventRender = (info: any) => {
+        let startDate = info.event.start
+            ? info.event.start.toLocaleString()
+            : "시작 날짜 없음";
+        let endDate = info.event.end
+            ? info.event.end.toLocaleString()
+            : "종료 날짜 없음";
+
         tippy(info.el, {
-            content: `제목: ${info.event.title}<br> 
+            content: `제목: ${info.event.title}<br>
             내용: ${
-                info.event.extendedProps.description
-            }<br>${info.event.start.toLocaleString()} - ${info.event.end.toLocaleString()}`,
+                info.event.extendedProps.description || "설명 없음"
+            }<br>${startDate} - ${endDate}`,
             allowHTML: true,
         });
     };
