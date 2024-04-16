@@ -6,6 +6,7 @@ import {
     orderByChild,
     onValue,
     startAt,
+    orderByKey,
 } from "firebase/database";
 import { realtimeDb } from "../firebase/FirebaseConfig";
 import { Link } from "react-router-dom";
@@ -18,11 +19,18 @@ interface IEvent {
     description?: string;
 }
 
+interface IWish {
+    id: string;
+    description: string;
+}
+
 export default function Main() {
-    const [events, setEvents] = useState<IEvent[]>([]);
+    const [calendar, setCalendar] = useState<IEvent[]>([]);
+    const [wishes, setWishes] = useState<IWish[]>([]);
 
     useEffect(() => {
-        const fetchEvents = () => {
+        //calendar
+        const fetchCalendar = () => {
             const now = new Date().toISOString();
             const eventsRef = query(
                 ref(realtimeDb, "calendar/events"),
@@ -36,19 +44,42 @@ export default function Main() {
                     const event = childSnapshot.val();
                     newEvents.push({ id: childSnapshot.key, ...event });
                 });
-                setEvents(newEvents);
+                setCalendar(newEvents);
             });
         };
 
-        const unsubscribe = fetchEvents();
+        //wishlist
+        const fetchWishes = () => {
+            const wishesRef = query(
+                ref(realtimeDb, "wishlist"),
+                orderByKey(),
+                limitToFirst(5)
+            );
+            return onValue(wishesRef, (snapshot) => {
+                const newWishes: IWish[] = [];
+                snapshot.forEach((childSnapshot) => {
+                    const wish = childSnapshot.val();
+                    newWishes.push({
+                        id: childSnapshot.key,
+                        description: wish.description,
+                    });
+                });
+                setWishes(newWishes);
+            });
+        };
+        const unsubscribeEvents = fetchCalendar();
+        const unsubscribeWishes = fetchWishes();
 
-        return () => unsubscribe();
+        return () => {
+            unsubscribeEvents();
+            unsubscribeWishes();
+        };
     }, []);
 
     return (
         <div className="max-h-screen bg-stone-300 text-center">
             <div className="bg-stone-100 min-h-screen mx-auto max-w-80 sm:max-w-lg  md:max-w-xl lg:max-w-4xl">
-                <div className="py-4">제목</div>
+                <div className="py-4">헥헥</div>
                 <div>
                     <ul className="flex justify-center items-center space-x-4 pb-4">
                         <li>
@@ -69,10 +100,17 @@ export default function Main() {
                     </ul>
                 </div>
                 <div className="">Picture</div>
-                <div className="">Wish List</div>
+                <div className="flex">Wish List</div>
+                <div>
+                    {wishes.map((wish) => (
+                        <div key={wish.id} className="flex text-gray-700">
+                            {wish.description}
+                        </div>
+                    ))}
+                </div>
                 <div className="">
                     <div className="flex text-blue-500">Calendar</div>
-                    {events.map((event) => (
+                    {calendar.map((event) => (
                         <div className="flex" key={event.id}>
                             <p className="text-red-300">
                                 {event.title} -{" "}
